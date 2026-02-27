@@ -33,13 +33,14 @@ def check_password():
     return True
 
 if check_password():
-    # --- SIDEBAR KAWALAN GIS ---
+    # --- SIDEBAR KAWALAN ---
     st.sidebar.header("🛠️ Panel Kawalan GIS")
     
     with st.sidebar.expander("🌍 Tetapan Geo & Peta", expanded=True):
-        epsg_code = st.text_input("Kod EPSG (Cth: 3168)", value="3168")
-        show_satelite = st.toggle("Buka Peta Satelit", value=False)
-        map_zoom = st.slider("Zoom Peta", 10, 25, 18)
+        # SET DEFAULT KE 4390
+        epsg_code = st.text_input("Kod EPSG (Cth: 4390, 3168)", value="4390")
+        show_satelite = st.toggle("Buka Peta Satelit", value=True)
+        map_zoom = st.slider("Zoom Peta", 10, 25, 19)
 
     with st.sidebar.expander("👁️ Elemen Paparan", expanded=True):
         show_bearing_dist = st.checkbox("Bearing & Jarak (Rotate)", value=True)
@@ -47,10 +48,10 @@ if check_password():
         show_grid = st.checkbox("Grid Line", value=True)
 
     with st.sidebar.expander("📏 Pelarasan Grafik"):
-        label_offset = st.slider("Jarak Label Stesen", 0.5, 15.0, 3.5)
+        label_offset = st.slider("Jarak Label Stesen", 0.5, 15.0, 4.5)
         text_size = st.slider("Saiz Tulisan", 5, 15, 9)
         point_size = st.slider("Saiz Point", 20, 300, 80)
-        poly_color = st.color_picker("Warna Garisan", "#1f77b4")
+        poly_color = st.color_picker("Warna Garisan", "#FFFF00") # Kuning lebih jelas untuk satelit
 
     # --- HEADER ---
     logo_file = "puo logo.png"
@@ -98,9 +99,9 @@ if check_password():
             with tab1:
                 fig, ax = plt.subplots(figsize=(12, 10))
                 df_poly = pd.concat([df, df.iloc[[0]]], ignore_index=True)
-                ax.plot(df_poly['E'], df_poly['N'], color=poly_color, linewidth=2, zorder=2)
+                ax.plot(df_poly['E'], df_poly['N'], color='#1f77b4', linewidth=2, zorder=2)
                 ax.scatter(df['E'], df['N'], color='red', s=point_size, edgecolors='black', zorder=3)
-                ax.fill(df_poly['E'], df_poly['N'], alpha=0.1, color='green' if area > 500 else 'orange')
+                ax.fill(df_poly['E'], df_poly['N'], alpha=0.1, color='orange')
 
                 if show_grid: ax.grid(True, linestyle=':', alpha=0.5)
 
@@ -110,7 +111,6 @@ if check_password():
                             xycoords='axes fraction', ha='center', va='center', fontsize=15, fontweight='bold')
 
                 for i in range(num_stn):
-                    # --- PEMBETULAN RALAT DI SINI ---
                     if show_stn_labels:
                         dx, dy = x[i] - centroid_x, y[i] - centroid_y
                         dist_val = math.sqrt(dx**2 + dy**2)
@@ -140,23 +140,34 @@ if check_password():
                 st.dataframe(df, use_container_width=True)
                 st.download_button("📥 Muat Turun CSV", data=df.to_csv(index=False), file_name='survey.csv')
 
+            # --- OVERLAY SATELIT ---
             if show_satelite:
+                st.write("### 🌍 Lokasi Peta Satelit (Google Hybrid)")
                 try:
+                    # Transformer dari 4390 ke WGS84
                     transformer = Transformer.from_crs(f"EPSG:{epsg_code}", "EPSG:4326", always_xy=True)
                     lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
-                    m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, tiles=None)
-                    folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', 
-                                     attr='Google', name='Satelite').add_to(m)
                     
+                    m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, tiles=None)
+                    
+                    # Google Hybrid Layer
+                    folium.TileLayer(
+                        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+                        attr='Google', name='Google Hybrid', overlay=False, control=True
+                    ).add_to(m)
+
                     poly_coords = []
                     for k in range(num_stn):
                         ln, lt = transformer.transform(df['E'].iloc[k], df['N'].iloc[k])
                         poly_coords.append([lt, ln])
                     
-                    folium.Polygon(locations=poly_coords, color="yellow", fill=True, fill_opacity=0.3).add_to(m)
-                    st_folium(m, width=1200, height=500)
-                except:
-                    st.error("Ralat EPSG.")
+                    folium.Polygon(
+                        locations=poly_coords, color="yellow", weight=4, fill=True, fill_opacity=0.4
+                    ).add_to(m)
+                    
+                    st_folium(m, width=1200, height=600, returned_objects=[])
+                except Exception as e:
+                    st.error(f"Ralat Transformasi: Sila semak kod EPSG {epsg_code}")
 
     if st.sidebar.button("Log Keluar"):
         del st.session_state.password_correct
