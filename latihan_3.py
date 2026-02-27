@@ -11,14 +11,6 @@ from streamlit_folium import st_folium
 # --- 1. SETTING HALAMAN ---
 st.set_page_config(page_title="Sistem Survey Lot Pro", layout="wide")
 
-# Custom CSS untuk UI
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
-
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
@@ -37,7 +29,6 @@ if check_password():
     st.sidebar.header("🛠️ Panel Kawalan GIS")
     
     with st.sidebar.expander("🌍 Tetapan Geo & Peta", expanded=True):
-        # SET DEFAULT KE 4390
         epsg_code = st.text_input("Kod EPSG (Cth: 4390, 3168)", value="4390")
         show_satelite = st.toggle("Buka Peta Satelit", value=True)
         map_zoom = st.slider("Zoom Peta", 10, 25, 19)
@@ -45,13 +36,14 @@ if check_password():
     with st.sidebar.expander("👁️ Elemen Paparan", expanded=True):
         show_bearing_dist = st.checkbox("Bearing & Jarak (Rotate)", value=True)
         show_stn_labels = st.checkbox("Nombor Stesen", value=True)
+        show_area_centre = st.checkbox("Papar Luas di Tengah", value=True)
         show_grid = st.checkbox("Grid Line", value=True)
 
     with st.sidebar.expander("📏 Pelarasan Grafik"):
         label_offset = st.slider("Jarak Label Stesen", 0.5, 15.0, 4.5)
         text_size = st.slider("Saiz Tulisan", 5, 15, 9)
         point_size = st.slider("Saiz Point", 20, 300, 80)
-        poly_color = st.color_picker("Warna Garisan", "#FFFF00") # Kuning lebih jelas untuk satelit
+        poly_color = st.color_picker("Warna Garisan", "#FFFF00")
 
     # --- HEADER ---
     logo_file = "puo logo.png"
@@ -82,12 +74,12 @@ if check_password():
             x, y = df['E'].values, df['N'].values
             num_stn = len(df)
             
-            # Pengiraan Luas & Perimeter
+            # Pengiraan Luas, Perimeter & Centroid
             area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
             perimeter = sum(math.sqrt((x[i]-x[(i+1)%num_stn])**2 + (y[i]-y[(i+1)%num_stn])**2) for i in range(num_stn))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
-            # --- METRICS DASHBOARD ---
+            # --- METRICS ---
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Bil. Stesen", f"{num_stn}")
             m2.metric("Perimeter", f"{perimeter:.3f} m")
@@ -99,16 +91,17 @@ if check_password():
             with tab1:
                 fig, ax = plt.subplots(figsize=(12, 10))
                 df_poly = pd.concat([df, df.iloc[[0]]], ignore_index=True)
-                ax.plot(df_poly['E'], df_poly['N'], color='#1f77b4', linewidth=2, zorder=2)
+                ax.plot(df_poly['E'], df_poly['N'], color='#1f77b4', linewidth=2)
                 ax.scatter(df['E'], df['N'], color='red', s=point_size, edgecolors='black', zorder=3)
-                ax.fill(df_poly['E'], df_poly['N'], alpha=0.1, color='orange')
+                ax.fill(df_poly['E'], df_poly['N'], alpha=0.15, color='orange')
 
                 if show_grid: ax.grid(True, linestyle=':', alpha=0.5)
 
-                # North Arrow
-                ax.annotate('N', xy=(0.05, 0.95), xytext=(0.05, 0.85),
-                            arrowprops=dict(facecolor='black', width=2, headwidth=8),
-                            xycoords='axes fraction', ha='center', va='center', fontsize=15, fontweight='bold')
+                # PAPAR LUAS DI TENGAH (GRAFIK)
+                if show_area_centre:
+                    ax.text(centroid_x, centroid_y, f"LUAS:\n{area:.3f} m²", 
+                            ha='center', va='center', fontsize=text_size+3, fontweight='bold',
+                            bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.5'))
 
                 for i in range(num_stn):
                     if show_stn_labels:
@@ -138,36 +131,36 @@ if check_password():
 
             with tab2:
                 st.dataframe(df, use_container_width=True)
-                st.download_button("📥 Muat Turun CSV", data=df.to_csv(index=False), file_name='survey.csv')
 
             # --- OVERLAY SATELIT ---
             if show_satelite:
                 st.write("### 🌍 Lokasi Peta Satelit (Google Hybrid)")
                 try:
-                    # Transformer dari 4390 ke WGS84
                     transformer = Transformer.from_crs(f"EPSG:{epsg_code}", "EPSG:4326", always_xy=True)
                     lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
                     
-                    m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, tiles=None)
-                    
-                    # Google Hybrid Layer
-                    folium.TileLayer(
-                        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                        attr='Google', name='Google Hybrid', overlay=False, control=True
-                    ).add_to(m)
+                    m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom)
+                    folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+                                     attr='Google', name='Google Hybrid').add_to(m)
 
                     poly_coords = []
                     for k in range(num_stn):
                         ln, lt = transformer.transform(df['E'].iloc[k], df['N'].iloc[k])
                         poly_coords.append([lt, ln])
                     
-                    folium.Polygon(
-                        locations=poly_coords, color="yellow", weight=4, fill=True, fill_opacity=0.4
-                    ).add_to(m)
+                    # Tambah Poligon
+                    folium.Polygon(locations=poly_coords, color="yellow", weight=4, fill=True, fill_opacity=0.4).add_to(m)
+                    
+                    # PAPAR LUAS DI TENGAH (PETA SATELIT)
+                    if show_area_centre:
+                        folium.Marker(
+                            location=[lat_c, lon_c],
+                            icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: yellow; font-weight: bold; width: 150px; text-shadow: 2px 2px black;">LUAS: {area:.2f} m²</div>""")
+                        ).add_to(m)
                     
                     st_folium(m, width=1200, height=600, returned_objects=[])
                 except Exception as e:
-                    st.error(f"Ralat Transformasi: Sila semak kod EPSG {epsg_code}")
+                    st.error(f"Sila semak Kod EPSG.")
 
     if st.sidebar.button("Log Keluar"):
         del st.session_state.password_correct
