@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+import os
 
 # --- 1. KONFIGURASI HALAMAN & KATA LALUAN ---
 st.set_page_config(page_title="PUO Surveying Tool", layout="centered")
@@ -21,18 +22,22 @@ def check_password():
     return True
 
 if check_password():
-    # --- LOGO SEKOLAH (Menggunakan fail yang anda beri) ---
-    logo_url = "https://raw.githubusercontent.com/SueAnn2496/puo_survey_lot/main/puo%20logo.png"
+    # --- LOGO SEKOLAH ---
+    # Memastikan sistem mencari fail .png yang anda upload
+    logo_file = "puo logo.png"
 
     # --- HEADER ---
     col_logo1, col_logo2 = st.columns([1, 2])
     with col_logo1:
-        # Menggunakan logo yang anda muat naik ke GitHub
-        st.image(logo_url, width=250) 
+        if os.path.exists(logo_file):
+            st.image(logo_file, width=280)
+        else:
+            # Jika fail masih tidak dikesan, paparkan info untuk troubleshooting
+            st.info("Nota: Pastikan fail gambar dinamakan 'puo logo.png' di GitHub.")
 
     with col_logo2:
         st.markdown("""
-            <div style='padding-top: 20px;'>
+            <div style='padding-top: 25px;'>
                 <h2 style='margin-bottom: 0px; font-size: 22px;'>POLITEKNIK UNGKU OMAR</h2>
                 <p style='font-size: 15px; color: gray;'>Jabatan Kejuruteraan Awam - Unit Geomatik</p>
             </div>
@@ -72,7 +77,7 @@ if check_password():
                 ax.plot(df_poly['E'], df_poly['N'], marker='o', linestyle='-', color='b', zorder=2)
                 ax.fill(df_poly['E'], df_poly['N'], alpha=0.15, color='skyblue', zorder=1)
 
-                # Label & Data
+                # Label & Data Ukur
                 for i in range(len(df)):
                     curr_x, curr_y = df['E'].iloc[i], df['N'].iloc[i]
                     dx, dy = curr_x - centroid_x, curr_y - centroid_y
@@ -91,6 +96,7 @@ if check_password():
                             color='darkgreen', fontsize=7, fontweight='bold', ha='center',
                             bbox=dict(facecolor='white', alpha=0.7, lw=0))
 
+                # Papar Luas
                 ax.text(centroid_x, centroid_y, f"LUAS:\n{area:.3f} m²", 
                         ha='center', va='center', fontsize=12, fontweight='bold',
                         bbox=dict(facecolor='yellow', alpha=0.7, boxstyle='round'))
@@ -99,6 +105,7 @@ if check_password():
                 st.pyplot(fig)
                 st.success(f"Analisis Selesai. Luas: {area:.3f} m²")
 
+    # Sidebar Log Keluar
     if st.sidebar.button("Log Keluar"):
         del st.session_state.password_correct
         st.rerun()
