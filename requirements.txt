@@ -3,3 +3,6 @@ pandas
 matplotlib
 numpy
 pillow
+pyproj
+streamlit-folium
+folium
