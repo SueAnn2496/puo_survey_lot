@@ -32,17 +32,16 @@ if check_password():
     col_h1, col_h2 = st.columns([1, 4])
     with col_h1:
         if os.path.exists(logo_file):
-            st.image(logo_file, width=180)
+            st.image(logo_file, width=150)
     with col_h2:
         st.markdown("<h1 style='margin-bottom:0;'>SISTEM SURVEY LOT</h1><p style='color:gray; font-size:18px;'>Politeknik Ungku Omar | Jabatan Kejuruteraan Awam</p>", unsafe_allow_html=True)
 
     st.divider()
 
-    # --- 2. INPUT DATA (EPSG DI LUAR UPLOAD) ---
-    st.markdown("### 🗺️ Konfigurasi Geospasial")
+    # --- 2. INPUT DATA ---
     col_main1, col_main2 = st.columns([1, 2])
     with col_main1:
-        epsg_input = st.text_input("🌍 Kod EPSG (Edit di sini):", value="4390")
+        epsg_input = st.text_input("🌍 Kod EPSG:", value="4390")
     with col_main2:
         uploaded_data = st.file_uploader("📂 Muat naik fail CSV (Format: STN, E, N)", type="csv")
 
@@ -59,24 +58,29 @@ if check_password():
             x, y = df['E'].values, df['N'].values
             num_stn = len(df)
             area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+            perimeter = sum(math.sqrt((x[i]-x[(i+1)%num_stn])**2 + (y[i]-y[(i+1)%num_stn])**2) for i in range(num_stn))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
-            # --- 3. PANEL KAWALAN (SIDEBAR) ---
-            st.sidebar.header("🛠️ Panel Kawalan")
-            
-            with st.sidebar.expander("👁️ On/Off Elemen", expanded=True):
-                show_stn = st.checkbox("Papar No. Stesen", value=True)
-                show_bd = st.checkbox("Papar Bearing & Jarak", value=True)
-                show_area = st.checkbox("Papar Luas di Tengah", value=True)
+            # --- 3. MAKLUMAT DATA DI ATAS PETA ---
+            st.markdown("### 📊 Ringkasan Data Lot")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Bil. Stesen", f"{num_stn}")
+            m2.metric("Perimeter", f"{perimeter:.3f} m")
+            m3.metric("Total Area (m²)", f"{area:.3f}")
+            m4.metric("Total Area (Ekar)", f"{(area/4046.86):.4f}")
 
-            with st.sidebar.expander("🎨 Pelarasan Grafik"):
-                poly_color = st.color_picker("Warna Poligon", "#FFFF00")
-                text_size = st.slider("Saiz Tulisan", 8, 25, 12)
-                map_zoom = st.slider("Tahap Zoom", 10, 30, 19)
-
-            # --- 4. MAP OVERLAY (GOOGLE SATELITE) ---
-            st.subheader("🌍 Paparan Lot di Atas Satelit")
+            # --- 4. PANEL KAWALAN (SIDEBAR) ---
+            st.sidebar.header("🛠️ Pelarasan Grafik")
             
+            with st.sidebar.expander("📏 Saiz & Skala", expanded=True):
+                stn_marker_size = st.sidebar.slider("Saiz Marker Stesen", 5, 30, 18)
+                stn_text_size = st.sidebar.slider("Saiz No. Stesen", 8, 20, 10)
+                bd_text_size = st.sidebar.slider("Saiz Bearing/Jarak", 8, 25, 12)
+                area_text_size = st.sidebar.slider("Saiz Luas (Tengah)", 12, 40, 18)
+                map_zoom = st.sidebar.slider("Tahap Zoom", 10, 30, 19)
+                poly_color = st.sidebar.color_picker("Warna Poligon", "#FFFF00")
+
+            # --- 5. MAP OVERLAY ---
             try:
                 transformer = Transformer.from_crs(f"EPSG:{epsg_input}", "EPSG:4326", always_xy=True)
                 lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
@@ -87,90 +91,87 @@ if check_password():
                     attr='Google', name='Google Hybrid', max_zoom=30
                 ).add_to(m)
 
-                # Tambah Alat Navigasi
                 MiniMap(toggle_display=True).add_to(m)
                 Fullscreen().add_to(m)
 
                 poly_coords = []
                 for i in range(num_stn):
-                    # Koordinat Point
                     p1_e, p1_n = x[i], y[i]
                     p2_e, p2_n = x[(i + 1) % num_stn], y[(i + 1) % num_stn]
-                    
                     ln1, lt1 = transformer.transform(p1_e, p1_n)
                     ln2, lt2 = transformer.transform(p2_e, p2_n)
                     poly_coords.append([lt1, ln1])
 
-                    # 1. Label Stesen
-                    if show_stn:
-                        folium.Marker(
-                            location=[lt1, ln1],
-                            icon=folium.DivIcon(html=f'<div style="color: white; background: red; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 10px; font-weight: bold; border: 1px solid white;">{df["STN"].iloc[i]}</div>')
-                        ).add_to(m)
-
-                    # 2. Pengiraan Bearing & Jarak (Rotating Text)
-                    if show_bd:
-                        dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
-                        bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
-                        
-                        # Pengiraan Sudut Putaran (Logic dari kod asal anda)
-                        angle_rad = math.atan2(p2_n-p1_n, p2_e-p1_e)
-                        angle_deg = -math.degrees(angle_rad) # Negatif untuk Folium CSS rotation
-                        
-                        # Normalkan sudut supaya tulisan tidak terbalik
-                        if angle_deg > 90: angle_deg -= 180
-                        elif angle_deg < -90: angle_deg += 180
-
-                        mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
-                        
-                        folium.Marker(
-                            location=[mid_lat, mid_lon],
-                            icon=folium.DivIcon(html=f"""
-                                <div style="transform: rotate({angle_deg}deg); text-align: center; width: 120px; margin-left: -60px;">
-                                    <span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {text_size}px; text-shadow: 1px 1px 2px black;">
-                                        {decimal_to_dms(bearing)}<br>{dist:.3f}m
-                                    </span>
-                                </div>""")
-                        ).add_to(m)
-
-                # Lukis Poligon
-                folium.Polygon(
-                    locations=poly_coords,
-                    color=poly_color,
-                    weight=3,
-                    fill=True,
-                    fill_opacity=0.2
-                ).add_to(m)
-
-                # 3. Label Luas di Tengah
-                if show_area:
+                    # Marker & No Stesen pada Peta
                     folium.Marker(
-                        location=[lat_c, lon_c],
-                        icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: white; font-weight: bold; width: 200px; margin-left: -100px; text-align: center; font-size: {text_size+4}px; text-shadow: 2px 2px 4px black; border: 1px dashed {poly_color}; padding: 5px;">LUAS: {area:.3f} m²</div>""")
+                        location=[lt1, ln1],
+                        icon=folium.DivIcon(html=f"""<div style="color: white; background: red; border-radius: 50%; width: {stn_marker_size}px; height: {stn_marker_size}px; line-height: {stn_marker_size}px; text-align: center; font-size: {stn_text_size}px; font-weight: bold; border: 1px solid white;">{df["STN"].iloc[i]}</div>""")
                     ).add_to(m)
 
-                st_folium(m, width="100%", height=600, returned_objects=[])
+                    # Bearing & Jarak (Rotating)
+                    dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
+                    bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
+                    angle_rad = math.atan2(p2_n-p1_n, p2_e-p1_e)
+                    angle_deg = -math.degrees(angle_rad)
+                    if angle_deg > 90: angle_deg -= 180
+                    elif angle_deg < -90: angle_deg += 180
+
+                    mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
+                    folium.Marker(
+                        location=[mid_lat, mid_lon],
+                        icon=folium.DivIcon(html=f"""<div style="transform: rotate({angle_deg}deg); text-align: center; width: 150px; margin-left: -75px;"><span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {bd_text_size}px; text-shadow: 1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>""")
+                    ).add_to(m)
+
+                folium.Polygon(locations=poly_coords, color=poly_color, weight=3, fill=True, fill_opacity=0.2).add_to(m)
+                
+                # Label Luas
+                folium.Marker(
+                    location=[lat_c, lon_c],
+                    icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; margin-left: -150px; text-align: center; font-size: {area_text_size}px; text-shadow: 2px 2px 4px black; border: 2px dashed {poly_color}; padding: 10px; background: rgba(0,0,0,0.2);">LUAS: {area:.3f} m²</div>""")
+                ).add_to(m)
+
+                st_folium(m, width="100%", height=700, returned_objects=[])
 
             except Exception as e:
-                st.error(f"Sila semak Kod EPSG: {e}")
+                st.error(f"Ralat: {e}")
 
-            # --- 5. FOOTER & METRICS ---
+            # --- 6. FUNGSI EKSPORT QGIS (POLYGON + POINTS) ---
             st.divider()
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Luas (m²)", f"{area:.3f}")
-            c2.metric("Luas (Ekar)", f"{(area/4046.86):.4f}")
             
-            # Export Function
-            def to_geojson(df, epsg):
-                coords = []
+            def create_qgis_geojson(df, epsg, area_val):
                 t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+                features = []
+                
+                # 1. Bina Feature Polygon
+                poly_pts = []
                 for i in range(len(df)):
                     ln, lt = t.transform(df['E'].iloc[i], df['N'].iloc[i])
-                    coords.append([ln, lt])
-                coords.append(coords[0])
-                return json.dumps({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"area": area}, "geometry": {"type": "Polygon", "coordinates": [coords]}}]})
+                    poly_pts.append([ln, lt])
+                poly_pts.append(poly_pts[0]) # Tutup poligon
+                
+                features.append({
+                    "type": "Feature",
+                    "properties": {"Layer": "Lot_Polygon", "Area_m2": area_val},
+                    "geometry": {"type": "Polygon", "coordinates": [poly_pts]}
+                })
+                
+                # 2. Bina Feature Points untuk setiap Stesen
+                for i in range(len(df)):
+                    ln, lt = t.transform(df['E'].iloc[i], df['N'].iloc[i])
+                    features.append({
+                        "type": "Feature",
+                        "properties": {"Layer": "Stesen_Point", "STN": str(df['STN'].iloc[i]), "East": float(df['E'].iloc[i]), "North": float(df['N'].iloc[i])},
+                        "geometry": {"type": "Point", "coordinates": [ln, lt]}
+                    })
+                
+                return json.dumps({"type": "FeatureCollection", "features": features}, indent=2)
 
-            c3.download_button("📥 Eksport ke QGIS (GeoJSON)", data=to_geojson(df, epsg_input), file_name="survey_lot.geojson")
+            st.download_button(
+                label="📥 Muat Turun Fail QGIS (Polygon & Stesen)",
+                data=create_qgis_geojson(df, epsg_input, area),
+                file_name=f"survey_qgis_{epsg_input}.geojson",
+                mime="application/json"
+            )
 
     if st.sidebar.button("Log Keluar"):
         del st.session_state.password_correct
