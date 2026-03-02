@@ -12,21 +12,28 @@ from folium.plugins import MiniMap, Fullscreen
 # --- 1. SETTING HALAMAN ---
 st.set_page_config(page_title="Sistem Survey Lot Pro", layout="wide")
 
+# Fungsi Password yang lebih kemas
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
-        password = st.text_input("Sila masukkan kata laluan:", type="password")
-        if st.button("Log Masuk"):
-            if password == "admin123":
-                st.session_state.password_correct = True
-                st.success("✅ Login Successful!")
-                st.rerun()
-            else:
-                st.error("❌ Wrong Password!")
+        col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
+        with col_p2:
+            password = st.text_input("Sila masukkan kata laluan:", type="password")
+            if st.button("Log Masuk", use_container_width=True):
+                if password == "admin123":
+                    st.session_state.password_correct = True
+                    st.rerun()
+                else:
+                    st.error("❌ Kata laluan salah!")
         return False
     return True
 
 if check_password():
+    # Papar Success hanya sekali selepas login
+    if "login_notified" not in st.session_state:
+        st.toast("✅ Log Masuk Berjaya!", icon="🚀")
+        st.session_state.login_notified = True
+
     # --- HEADER ---
     logo_file = "puo logo.png"
     col_h1, col_h2 = st.columns([1, 4])
@@ -43,7 +50,7 @@ if check_password():
     with col_main1:
         epsg_input = st.text_input("🌍 Kod EPSG:", value="4390")
     with col_main2:
-        uploaded_data = st.file_uploader("📂 Muat naik fail CSV (Format: STN, E, N)", type="csv")
+        uploaded_data = st.file_uploader("📂 Muat naik fail CSV (STN, E, N)", type="csv")
 
     def decimal_to_dms(deg):
         d = int(deg)
@@ -72,19 +79,19 @@ if check_password():
             # --- 4. PANEL KAWALAN (SIDEBAR) ---
             st.sidebar.header("⚙️ Konfigurasi Paparan")
             
-            # Bahagian On/Off Elemen
             with st.sidebar.expander("👁️ Elemen Paparan", expanded=True):
                 show_stn = st.checkbox("Papar No. Stesen", value=True)
                 show_bd = st.checkbox("Papar Bearing & Jarak", value=True)
                 show_area_label = st.checkbox("Papar Luas (Tengah)", value=True)
 
-            # Bahagian Saiz & Skala (Boleh Buka/Tutup)
-            with st.sidebar.expander("📏 Saiz & Skala", expanded=False):
+            with st.sidebar.expander("📏 Saiz & Skala", expanded=True):
                 stn_marker_size = st.slider("Saiz Marker Stesen", 5, 30, 18)
                 stn_text_size = st.slider("Saiz No. Stesen", 8, 20, 10)
                 bd_text_size = st.slider("Saiz Bearing/Jarak", 8, 25, 12)
-                area_text_size = st.slider("Saiz Luas (Tengah)", 12, 40, 18)
-                map_zoom = st.slider("Tahap Zoom", 10, 30, 19)
+                # ADJUST SAiz LUAS SEHINGGA 20
+                area_text_size = st.slider("Saiz Luas (Tengah)", 10, 20, 15)
+                # ZOOM SEHINGGA 25
+                map_zoom = st.slider("Tahap Zoom", 10, 25, 19)
                 poly_color = st.color_picker("Warna Poligon", "#FFFF00")
 
             # --- 5. MAP OVERLAY ---
@@ -92,10 +99,10 @@ if check_password():
                 transformer = Transformer.from_crs(f"EPSG:{epsg_input}", "EPSG:4326", always_xy=True)
                 lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
                 
-                m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=30)
+                m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=25)
                 folium.TileLayer(
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                    attr='Google', name='Google Hybrid', max_zoom=30
+                    attr='Google', name='Google Hybrid', max_zoom=25
                 ).add_to(m)
 
                 MiniMap(toggle_display=True).add_to(m)
@@ -134,7 +141,7 @@ if check_password():
                 if show_area_label:
                     folium.Marker(
                         location=[lat_c, lon_c],
-                        icon=folium.DivIcon(html=f'<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; margin-left: -150px; text-align: center; font-size: {area_text_size}px; text-shadow: 2px 2px 4px black; border: 2px dashed {poly_color}; padding: 10px; background: rgba(0,0,0,0.2);">LUAS: {area:.3f} m²</div>')
+                        icon=folium.DivIcon(html=f'<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; margin-left: -150px; text-align: center; font-size: {area_text_size}px; text-shadow: 2px 2px 4px black; border: 1px dashed {poly_color}; padding: 10px; background: rgba(0,0,0,0.2);">LUAS: {area:.3f} m²</div>')
                     ).add_to(m)
 
                 st_folium(m, width="100%", height=700, returned_objects=[])
@@ -144,7 +151,6 @@ if check_password():
 
             # --- 6. EKSPORT QGIS ---
             st.divider()
-            
             def create_qgis_geojson(df, epsg, area_val):
                 t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
                 features = []
@@ -172,6 +178,8 @@ if check_password():
                 mime="application/json"
             )
 
+    # Log Keluar
     if st.sidebar.button("Log Keluar"):
-        del st.session_state.password_correct
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
