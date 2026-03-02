@@ -9,7 +9,7 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import MiniMap, Fullscreen
 
-# --- 1. KONFIGURASI HALAMAN ---
+# --- 1. SETTING HALAMAN ---
 st.set_page_config(page_title="Sistem Survey Lot Pro", layout="wide")
 
 def check_password():
@@ -29,114 +29,107 @@ def check_password():
 if check_password():
     # --- HEADER ---
     logo_file = "puo logo.png"
-    col_h1, col_h2 = st.columns([1, 5])
+    col_h1, col_h2 = st.columns([1, 4])
     with col_h1:
         if os.path.exists(logo_file):
-            st.image(logo_file, width=120)
+            st.image(logo_file, width=180)
     with col_h2:
-        st.markdown("<h2 style='margin-bottom:0;'>SISTEM SURVEY LOT</h2><p style='color:gray;'>Politeknik Ungku Omar | Unit Geomatik</p>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-bottom:0;'>SISTEM SURVEY LOT</h1><p style='color:gray; font-size:18px;'>Politeknik Ungku Omar | Jabatan Kejuruteraan Awam</p>", unsafe_allow_html=True)
 
     st.divider()
 
-    # --- 2. INPUT EPSG & FAIL ---
-    st.markdown("### 🗺️ Konfigurasi Data")
+    # --- 2. INPUT DATA (EPSG DI LUAR UPLOAD) ---
+    st.markdown("### 🗺️ Konfigurasi Geospasial")
     col_main1, col_main2 = st.columns([1, 2])
-    
     with col_main1:
-        epsg_input = st.text_input("🌍 Masukkan Kod EPSG:", value="4390", help="Contoh: 4390 (Perak), 3167 (Selangor)")
-        
+        epsg_input = st.text_input("🌍 Kod EPSG (Edit di sini):", value="4390")
     with col_main2:
-        uploaded_data = st.file_uploader("📂 Muat naik fail CSV Koordinat (STN, E, N)", type="csv")
+        uploaded_data = st.file_uploader("📂 Muat naik fail CSV (Format: STN, E, N)", type="csv")
+
+    def decimal_to_dms(deg):
+        d = int(deg)
+        m = int((deg - d) * 60)
+        s = (deg - d - m/60) * 3600
+        return f"{d}°{m}'{s:.0f}\""
 
     if uploaded_data is not None:
         df = pd.read_csv(uploaded_data)
         
         if 'E' in df.columns and 'N' in df.columns:
-            # Data Processing
             x, y = df['E'].values, df['N'].values
             num_stn = len(df)
             area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
-            # --- 3. PANEL PELARASAN (SIDEBAR) ---
-            st.sidebar.header("🎨 Pelarasan Visual")
-            poly_color = st.sidebar.color_picker("Warna Sempadan", "#FFFF00")
+            # --- 3. PANEL KAWALAN (SIDEBAR) ---
+            st.sidebar.header("🛠️ Panel Kawalan")
             
-            st.sidebar.subheader("👁️ Kawalan Paparan")
-            show_stn = st.sidebar.checkbox("Papar No. Stesen", value=True)
-            show_bearing = st.sidebar.checkbox("Papar Bearing & Jarak", value=True)
-            show_area_label = st.sidebar.checkbox("Papar Luas (Tengah)", value=True)
-            
-            st.sidebar.subheader("📐 Saiz & Zoom")
-            line_weight = st.sidebar.slider("Ketebalan Garisan", 1, 10, 3)
-            fill_opacity = st.sidebar.slider("Ketelusan (Fill)", 0.0, 1.0, 0.3)
-            text_size = st.sidebar.slider("Saiz Tulisan Data", 10, 40, 14)
-            map_zoom = st.sidebar.slider("Tahap Zoom Peta", 1, 30, 19)
-            
-            # --- 4. MAP OVERLAY ---
+            with st.sidebar.expander("👁️ On/Off Elemen", expanded=True):
+                show_stn = st.checkbox("Papar No. Stesen", value=True)
+                show_bd = st.checkbox("Papar Bearing & Jarak", value=True)
+                show_area = st.checkbox("Papar Luas di Tengah", value=True)
+
+            with st.sidebar.expander("🎨 Pelarasan Grafik"):
+                poly_color = st.color_picker("Warna Poligon", "#FFFF00")
+                text_size = st.slider("Saiz Tulisan", 8, 25, 12)
+                map_zoom = st.slider("Tahap Zoom", 10, 30, 19)
+
+            # --- 4. MAP OVERLAY (GOOGLE SATELITE) ---
             st.subheader("🌍 Paparan Lot di Atas Satelit")
             
             try:
                 transformer = Transformer.from_crs(f"EPSG:{epsg_input}", "EPSG:4326", always_xy=True)
                 lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
                 
-                m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, control_scale=True, max_zoom=30)
-                
-                # Google Hybrid
+                m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=30)
                 folium.TileLayer(
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                    attr='Google Hybrid', name='Google Hybrid', overlay=False, max_zoom=30
+                    attr='Google', name='Google Hybrid', max_zoom=30
                 ).add_to(m)
 
-                # Add Plugins
+                # Tambah Alat Navigasi
                 MiniMap(toggle_display=True).add_to(m)
                 Fullscreen().add_to(m)
 
                 poly_coords = []
                 for i in range(num_stn):
-                    # Koordinat Point Sekarang
-                    ln1, lt1 = transformer.transform(x[i], y[i])
-                    # Koordinat Point Seterusnya
-                    next_i = (i + 1) % num_stn
-                    ln2, lt2 = transformer.transform(x[next_i], y[next_i])
+                    # Koordinat Point
+                    p1_e, p1_n = x[i], y[i]
+                    p2_e, p2_n = x[(i + 1) % num_stn], y[(i + 1) % num_stn]
                     
+                    ln1, lt1 = transformer.transform(p1_e, p1_n)
+                    ln2, lt2 = transformer.transform(p2_e, p2_n)
                     poly_coords.append([lt1, ln1])
-                    
-                    # 1. Label No Stesen
+
+                    # 1. Label Stesen
                     if show_stn:
                         folium.Marker(
                             location=[lt1, ln1],
-                            icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: white; font-weight: bold; background-color: red; padding: 2px 5px; border-radius: 50%; font-size: 10px; border: 1px solid white;">{df['STN'].iloc[i]}</div>""")
+                            icon=folium.DivIcon(html=f'<div style="color: white; background: red; border-radius: 50%; width: 18px; height: 18px; text-align: center; font-size: 10px; font-weight: bold; border: 1px solid white;">{df["STN"].iloc[i]}</div>')
                         ).add_to(m)
 
-                    # 2. Pengiraan Bearing & Jarak
-                    if show_bearing:
-                        # Jarak Ground
-                        dist = math.sqrt((x[next_i]-x[i])**2 + (y[next_i]-y[i])**2)
+                    # 2. Pengiraan Bearing & Jarak (Rotating Text)
+                    if show_bd:
+                        dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
+                        bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
                         
-                        # Bearing (Azimuth)
-                        angle_rad = math.atan2(x[next_i]-x[i], y[next_i]-y[i])
-                        bearing_deg = math.degrees(angle_rad) % 360
+                        # Pengiraan Sudut Putaran (Logic dari kod asal anda)
+                        angle_rad = math.atan2(p2_n-p1_n, p2_e-p1_e)
+                        angle_deg = -math.degrees(angle_rad) # Negatif untuk Folium CSS rotation
                         
-                        # Convert to DMS for display
-                        d = int(bearing_deg)
-                        m_dms = int((bearing_deg - d) * 60)
-                        s_dms = (bearing_deg - d - m_dms/60) * 3600
-                        bearing_text = f"{d}°{m_dms}'{s_dms:.0f}\""
+                        # Normalkan sudut supaya tulisan tidak terbalik
+                        if angle_deg > 90: angle_deg -= 180
+                        elif angle_deg < -90: angle_deg += 180
 
-                        # Rotation Angle for text (Matplotlib style rotation)
-                        rot_angle = 90 - math.degrees(math.atan2(lt2-lt1, ln2-ln1))
-                        if rot_angle > 90: rot_angle -= 180
-                        if rot_angle < -90: rot_angle += 180
-
-                        # Posisi Tengah Garisan
                         mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
                         
                         folium.Marker(
                             location=[mid_lat, mid_lon],
                             icon=folium.DivIcon(html=f"""
-                                <div style="transform: rotate({rot_angle}deg); font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {text_size}px; white-space: nowrap; text-shadow: 1px 1px 2px black; text-align: center;">
-                                    {bearing_text}<br>{dist:.3f}m
+                                <div style="transform: rotate({angle_deg}deg); text-align: center; width: 120px; margin-left: -60px;">
+                                    <span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {text_size}px; text-shadow: 1px 1px 2px black;">
+                                        {decimal_to_dms(bearing)}<br>{dist:.3f}m
+                                    </span>
                                 </div>""")
                         ).add_to(m)
 
@@ -144,32 +137,40 @@ if check_password():
                 folium.Polygon(
                     locations=poly_coords,
                     color=poly_color,
-                    weight=line_weight,
+                    weight=3,
                     fill=True,
-                    fill_color=poly_color,
-                    fill_opacity=fill_opacity,
+                    fill_opacity=0.2
                 ).add_to(m)
 
-                # Label Luas
-                if show_area_label:
+                # 3. Label Luas di Tengah
+                if show_area:
                     folium.Marker(
                         location=[lat_c, lon_c],
-                        icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; font-size: {text_size+4}px; text-shadow: 2px 2px 4px #000; text-align: center; border: 1px dashed {poly_color}; padding: 5px;">LUAS: {area:.3f} m²</div>""")
+                        icon=folium.DivIcon(html=f"""<div style="font-family: sans-serif; color: white; font-weight: bold; width: 200px; margin-left: -100px; text-align: center; font-size: {text_size+4}px; text-shadow: 2px 2px 4px black; border: 1px dashed {poly_color}; padding: 5px;">LUAS: {area:.3f} m²</div>""")
                     ).add_to(m)
 
-                st_folium(m, width="100%", height=650, returned_objects=[])
+                st_folium(m, width="100%", height=600, returned_objects=[])
 
             except Exception as e:
-                st.error(f"Ralat: {e}")
+                st.error(f"Sila semak Kod EPSG: {e}")
 
-            # --- 5. FOOTER ---
+            # --- 5. FOOTER & METRICS ---
             st.divider()
-            f1, f2, f3 = st.columns(3)
-            f1.metric("Luas (m²)", f"{area:.3f}")
-            f2.metric("Luas (Ekar)", f"{(area/4046.86):.4f}")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Luas (m²)", f"{area:.3f}")
+            c2.metric("Luas (Ekar)", f"{(area/4046.86):.4f}")
             
-            geojson_data = json.dumps({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"area": area}, "geometry": {"type": "Polygon", "coordinates": [[ [transformer.transform(df['E'].iloc[i], df['N'].iloc[i])[0], transformer.transform(df['E'].iloc[i], df['N'].iloc[i])[1]] for i in range(num_stn) ] + [[transformer.transform(df['E'].iloc[0], df['N'].iloc[0])[0], transformer.transform(df['E'].iloc[0], df['N'].iloc[0])[1]]]]}}]})
-            f3.download_button("📥 Eksport GeoJSON", data=geojson_data, file_name="survey.geojson")
+            # Export Function
+            def to_geojson(df, epsg):
+                coords = []
+                t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+                for i in range(len(df)):
+                    ln, lt = t.transform(df['E'].iloc[i], df['N'].iloc[i])
+                    coords.append([ln, lt])
+                coords.append(coords[0])
+                return json.dumps({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"area": area}, "geometry": {"type": "Polygon", "coordinates": [coords]}}]})
+
+            c3.download_button("📥 Eksport ke QGIS (GeoJSON)", data=to_geojson(df, epsg_input), file_name="survey_lot.geojson")
 
     if st.sidebar.button("Log Keluar"):
         del st.session_state.password_correct
