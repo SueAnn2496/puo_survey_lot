@@ -12,32 +12,41 @@ from folium.plugins import MiniMap, Fullscreen
 # --- 1. SETTING HALAMAN ---
 st.set_page_config(page_title="Sistem Survey Lot Pro", layout="wide")
 
-# Fungsi Password dengan ID Pengguna
+# --- DATABASE PENGGUNA ---
+USER_DB = {
+    "1": "OOI SUE ANN",
+    "2": "WONG YUEAN YI",
+    "3": "CHAN BOON YEAH"
+}
+
+# Fungsi Password dengan ID Padanan Nama
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
         col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
         
         with col_p2:
-            user_id = st.text_input("👤 Masukkan Nama / ID Pengguna:", key="user_id_input")
+            input_id = st.text_input("👤 Masukkan ID (Contoh: 1, 2, atau 3):", key="id_input")
             password = st.text_input("🔑 Masukkan Kata Laluan:", type="password")
             
             if st.button("Log Masuk", use_container_width=True):
-                if password == "admin123" and user_id.strip() != "":
-                    st.session_state.password_correct = True
-                    st.session_state.user_name = user_id # Simpan nama untuk sambutan
-                    st.rerun()
-                elif user_id.strip() == "":
-                    st.warning("⚠️ Sila masukkan Nama atau ID anda.")
+                # Semak jika ID wujud dalam Database
+                if input_id in USER_DB:
+                    if password == "admin123":
+                        st.session_state.password_correct = True
+                        st.session_state.user_full_name = USER_DB[input_id] # Ambil nama dari DB
+                        st.rerun()
+                    else:
+                        st.error("❌ Kata laluan salah!")
                 else:
-                    st.error("❌ Kata laluan salah!")
+                    st.error("❌ ID Pengguna tidak dijumpai!")
         return False
     return True
 
 if check_password():
-    # Papar Success dengan Nama Pengguna
+    # Papar Toast Success dengan Nama penuh dari Database
     if "login_notified" not in st.session_state:
-        st.toast(f"✅ {st.session_state.user_name} Berjaya Log Masuk!", icon="🚀")
+        st.toast(f"✅ {st.session_state.user_full_name} Berjaya Log Masuk!", icon="🚀")
         st.session_state.login_notified = True
 
     # --- HEADER ---
@@ -50,7 +59,7 @@ if check_password():
         st.markdown(f"""
             <h1 style='margin-bottom:0;'>SISTEM SURVEY LOT</h1>
             <p style='color:gray; font-size:18px;'>Politeknik Ungku Omar | Jabatan Kejuruteraan Awam</p>
-            <p style='color:green; font-weight:bold;'>Sesi Aktif: {st.session_state.user_name}</p>
+            <p style='color:#007BFF; font-weight:bold; font-size:16px;'>Surveyor: {st.session_state.user_full_name}</p>
         """, unsafe_allow_html=True)
 
     st.divider()
@@ -78,7 +87,7 @@ if check_password():
             perimeter = sum(math.sqrt((x[i]-x[(i+1)%num_stn])**2 + (y[i]-y[(i+1)%num_stn])**2) for i in range(num_stn))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
-            # --- 3. MAKLUMAT DATA ---
+            # --- 3. RINGKASAN DATA ---
             st.markdown("### 📊 Ringkasan Data Lot")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Bil. Stesen", f"{num_stn}")
@@ -87,7 +96,7 @@ if check_password():
             m4.metric("Total Area (Ekar)", f"{(area/4046.86):.4f}")
 
             # --- 4. SIDEBAR ---
-            st.sidebar.header(f"👤 {st.session_state.user_name}")
+            st.sidebar.header(f"👋 Hai, {st.session_state.user_full_name.split()[0]}")
             
             with st.sidebar.expander("👁️ Elemen Paparan", expanded=True):
                 show_stn = st.checkbox("Papar No. Stesen", value=True)
@@ -109,7 +118,7 @@ if check_password():
                 
                 m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=25)
                 folium.TileLayer(
-                    tiles='https://mt1.google.com/vt/lyrs=y&x={{x}}&y={{y}}&z={{z}}', 
+                    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
                     attr='Google', name='Google Hybrid', max_zoom=25
                 ).add_to(m)
 
@@ -127,7 +136,7 @@ if check_password():
                     if show_stn:
                         folium.Marker(
                             location=[lt1, ln1],
-                            icon=folium.DivIcon(html=f'<div style="color: white; background: red; border-radius: 50%; width: {{stn_marker_size}}px; height: {{stn_marker_size}}px; line-height: {{stn_marker_size}}px; text-align: center; font-size: {{stn_text_size}}px; font-weight: bold; border: 1px solid white;">{{df["STN"].iloc[i]}}</div>')
+                            icon=folium.DivIcon(html=f'<div style="color: white; background: red; border-radius: 50%; width: {stn_marker_size}px; height: {stn_marker_size}px; line-height: {stn_marker_size}px; text-align: center; font-size: {stn_text_size}px; font-weight: bold; border: 1px solid white;">{df["STN"].iloc[i]}</div>')
                         ).add_to(m)
 
                     if show_bd:
@@ -141,7 +150,7 @@ if check_password():
                         mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
                         folium.Marker(
                             location=[mid_lat, mid_lon],
-                            icon=folium.DivIcon(html=f'<div style="transform: rotate({{angle_deg}}deg); text-align: center; width: 150px; margin-left: -75px;"><span style="font-family: sans-serif; color: {{poly_color}}; font-weight: bold; font-size: {{bd_text_size}}px; text-shadow: 1px 1px 2px black;">{{decimal_to_dms(bearing)}}<br>{{dist:.3f}}m</span></div>')
+                            icon=folium.DivIcon(html=f'<div style="transform: rotate({angle_deg}deg); text-align: center; width: 150px; margin-left: -75px;"><span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {bd_text_size}px; text-shadow: 1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>')
                         ).add_to(m)
 
                 folium.Polygon(locations=poly_coords, color=poly_color, weight=3, fill=True, fill_opacity=0.2).add_to(m)
@@ -149,18 +158,18 @@ if check_password():
                 if show_area_label:
                     folium.Marker(
                         location=[lat_c, lon_c],
-                        icon=folium.DivIcon(html=f'<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; margin-left: -150px; text-align: center; font-size: {{area_text_size}}px; text-shadow: 2px 2px 4px black; border: 1px dashed {{poly_color}}; padding: 10px; background: rgba(0,0,0,0.2);">LUAS: {{area:.3f}} m²</div>')
+                        icon=folium.DivIcon(html=f'<div style="font-family: sans-serif; color: white; font-weight: bold; width: 300px; margin-left: -150px; text-align: center; font-size: {area_text_size}px; text-shadow: 2px 2px 4px black; border: 2px dashed {poly_color}; padding: 10px; background: rgba(0,0,0,0.2);">LUAS: {area:.3f} m²</div>')
                     ).add_to(m)
 
                 st_folium(m, width="100%", height=700, returned_objects=[])
 
             except Exception as e:
-                st.error(f"Ralat: {{e}}")
+                st.error(f"Ralat: {e}")
 
             # --- 6. EKSPORT ---
             st.divider()
             def create_qgis_geojson(df, epsg, area_val):
-                t = Transformer.from_crs(f"EPSG:{{epsg}}", "EPSG:4326", always_xy=True)
+                t = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
                 features = []
                 poly_pts = []
                 for i in range(len(df)):
@@ -174,15 +183,15 @@ if check_password():
                 poly_pts.append(poly_pts[0])
                 features.insert(0, {
                     "type": "Feature",
-                    "properties": {"Layer": "Lot_Polygon", "Area_m2": area_val, "Surveyor": st.session_state.user_name},
+                    "properties": {"Layer": "Lot_Polygon", "Area_m2": area_val, "Surveyor": st.session_state.user_full_name},
                     "geometry": {"type": "Polygon", "coordinates": [poly_pts]}
                 })
                 return json.dumps({"type": "FeatureCollection", "features": features}, indent=2)
 
             st.download_button(
-                label="📥 Muat Turun Fail QGIS",
+                label=f"📥 Muat Turun Fail QGIS ({st.session_state.user_full_name})",
                 data=create_qgis_geojson(df, epsg_input, area),
-                file_name=f"survey_lot_{st.session_state.user_name}.geojson",
+                file_name=f"survey_{st.session_state.user_full_name.replace(' ','_')}.geojson",
                 mime="application/json"
             )
 
