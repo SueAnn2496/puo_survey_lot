@@ -78,6 +78,8 @@ if check_password():
             x, y = df['E'].values, df['N'].values
             stn_labels = df['STN'].values
             num_stn = len(df)
+            
+            # Pengiraan Luas & Perimeter
             area = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
             perimeter = sum(math.sqrt((x[i]-x[(i+1)%num_stn])**2 + (y[i]-y[(i+1)%num_stn])**2) for i in range(num_stn))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
@@ -105,7 +107,6 @@ if check_password():
                 m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=25)
                 folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid', max_zoom=25).add_to(m)
                 
-                # Fullscreen & MiniMap
                 Fullscreen().add_to(m)
                 MiniMap(toggle_display=True).add_to(m)
                 
@@ -117,20 +118,19 @@ if check_password():
                     ln2, lt2 = transformer.transform(p2_e, p2_n)
                     poly_coords.append([lt1, ln1])
 
-                    # Popup Maklumat Stesen (Koordinat)
-                    stn_popup = f"""
+                    # Popup Stesen (Koordinat)
+                    stn_popup_html = f"""
                     <div style="font-family: Arial; width: 140px;">
-                        <b style="color:red;">Stesen: {stn_labels[i]}</b><br>
+                        <b style="color:red;">STESEN {stn_labels[i]}</b><br>
                         <hr style="margin:4px 0;">
                         <b>E:</b> {p1_e:.3f}<br>
                         <b>N:</b> {p1_n:.3f}
                     </div>
                     """
 
-                    # Marker Stesen (Klik untuk Koordinat)
                     folium.Marker(
                         location=[lt1, ln1],
-                        popup=folium.Popup(stn_popup, max_width=200),
+                        popup=folium.Popup(stn_popup_html, max_width=200),
                         icon=folium.DivIcon(html=f"""
                             <div style="color: white; background: red; border-radius: 50%; 
                             width: {stn_marker_size}px; height: {stn_marker_size}px; 
@@ -141,7 +141,7 @@ if check_password():
                             </div>""")
                     ).add_to(m)
 
-                    # Bearing/Jarak Statik
+                    # Bearing & Jarak Statik
                     dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
                     bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
                     angle_deg = -math.degrees(math.atan2(p2_n-p1_n, p2_e-p1_e))
@@ -154,17 +154,32 @@ if check_password():
                         icon=folium.DivIcon(html=f'<div style="transform: translate(-50%, -50%) rotate({angle_deg}deg); text-align: center; width: 150px;"><span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {bd_text_size}px; text-shadow: 1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>')
                     ).add_to(m)
 
-                # Luas Label Statik
+                # --- POPUP POLIGON (MAKLUMAT LOT) ---
+                lot_info_html = f"""
+                <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; width: 220px; padding: 5px;">
+                    <h4 style="margin: 0 0 10px 0; color: #007BFF; border-bottom: 2px solid #007BFF; padding-bottom: 5px;">📍 Maklumat Lot</h4>
+                    <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                        <tr><td style="padding: 3px 0;"><b>Surveyor:</b></td><td style="text-align: right;">{st.session_state.user_full_name}</td></tr>
+                        <tr><td style="padding: 3px 0;"><b>Luas:</b></td><td style="text-align: right;">{area:.3f} m²</td></tr>
+                        <tr><td style="padding: 3px 0;"><b>Perimeter:</b></td><td style="text-align: right;">{perimeter:.3f} m</td></tr>
+                    </table>
+                </div>
+                """
+
+                # Luas Label Statik (Tengah Lot)
                 folium.Marker(
                     location=[lat_c, lon_c],
                     icon=folium.DivIcon(html=f'<div style="transform: translate(-50%, -50%); font-family: sans-serif; color: white; font-weight: bold; width: 200px; text-align: center; font-size: 15px; text-shadow: 2px 2px 4px black; border: 2px dashed {poly_color}; padding: 5px; background: rgba(0,0,0,0.3);">LUAS: {area:.3f} m²</div>')
                 ).add_to(m)
 
-                # Poligon dengan Popup Info Lot
-                lot_popup = f"<b>Surveyor:</b> {st.session_state.user_full_name}<br><b>Luas:</b> {area:.3f} m²"
+                # Poligon (Klik untuk Popup)
                 folium.Polygon(
-                    locations=poly_coords, color=poly_color, weight=3, fill=True, fill_opacity=0.2,
-                    popup=folium.Popup(lot_popup, max_width=200)
+                    locations=poly_coords,
+                    color=poly_color,
+                    weight=3,
+                    fill=True,
+                    fill_opacity=0.2,
+                    popup=folium.Popup(lot_info_html, max_width=300)
                 ).add_to(m)
 
                 st_folium(m, width="100%", height=700)
