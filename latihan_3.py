@@ -78,60 +78,70 @@ if check_password():
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
             # --- 3. SIDEBAR ---
-            st.sidebar.header(f"⚙️ Kawalan Peta")
-            map_zoom = st.sidebar.slider("Tahap Zoom", 10, 25, 19)
-            poly_color = st.sidebar.color_picker("Warna Poligon", "#FFFF00")
-            stn_marker_size = st.sidebar.slider("Saiz Marker Stesen", 5, 30, 18)
+            st.sidebar.header(f"⚙️ Kawalan Paparan")
+            with st.sidebar.expander("📏 Saiz & Skala", expanded=True):
+                stn_marker_size = st.slider("Saiz Marker Stesen", 5, 30, 18)
+                bd_text_size = st.slider("Saiz Bearing/Jarak", 8, 25, 12)
+                area_text_size = st.slider("Saiz Luas (Tengah)", 10, 20, 15)
+                map_zoom = st.slider("Tahap Zoom", 10, 25, 19)
+                poly_color = st.color_picker("Warna Poligon", "#FFFF00")
 
             # --- 4. MAP OVERLAY ---
             try:
                 transformer = Transformer.from_crs(f"EPSG:{epsg_input}", "EPSG:4326", always_xy=True)
                 lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
-                
                 m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=25)
                 folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid', max_zoom=25).add_to(m)
                 
                 poly_coords = []
-                bearing_dist_list = []
-
                 for i in range(num_stn):
                     p1_e, p1_n = x[i], y[i]
                     p2_e, p2_n = x[(i + 1) % num_stn], y[(i + 1) % num_stn]
                     ln1, lt1 = transformer.transform(p1_e, p1_n)
+                    ln2, lt2 = transformer.transform(p2_e, p2_n)
                     poly_coords.append([lt1, ln1])
 
-                    # Kira Bearing & Jarak untuk diletakkan dalam Popup
-                    dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
-                    bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
-                    bearing_dist_list.append(f"<b>{df['STN'].iloc[i]} ke {df['STN'].iloc[(i+1)%num_stn]}:</b> {decimal_to_dms(bearing)} / {dist:.3f}m")
-
-                    # Marker Stesen (Tetap ada)
+                    # 1. Stesen No - Centered (Statik)
                     folium.Marker(
                         location=[lt1, ln1],
                         icon=folium.DivIcon(html=f'<div style="color: white; background: red; border-radius: 50%; width: {stn_marker_size}px; height: {stn_marker_size}px; line-height: {stn_marker_size}px; text-align: center; font-size: 10px; font-weight: bold; border: 1px solid white; transform: translate(-50%, -50%);">{df["STN"].iloc[i]}</div>')
                     ).add_to(m)
 
-                # Bina Kandungan Popup (HTML)
-                bd_html = "<br>".join(bearing_dist_list)
+                    # 2. Bearing/Jarak - Centered & Rotated (Statik)
+                    dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
+                    bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
+                    angle_deg = -math.degrees(math.atan2(p2_n-p1_n, p2_e-p1_e))
+                    if angle_deg > 90: angle_deg -= 180
+                    elif angle_deg < -90: angle_deg += 180
+
+                    mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
+                    folium.Marker(
+                        location=[mid_lat, mid_lon],
+                        icon=folium.DivIcon(html=f'<div style="transform: translate(-50%, -50%) rotate({angle_deg}deg); text-align: center; width: 150px;"><span style="font-family: sans-serif; color: {poly_color}; font-weight: bold; font-size: {bd_text_size}px; text-shadow: 1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>')
+                    ).add_to(m)
+
+                # 3. Luas Label - Statik di tengah
+                folium.Marker(
+                    location=[lat_c, lon_c],
+                    icon=folium.DivIcon(html=f'<div style="transform: translate(-50%, -50%); font-family: sans-serif; color: white; font-weight: bold; width: 200px; text-align: center; font-size: {area_text_size}px; text-shadow: 2px 2px 4px black; border: 2px dashed {poly_color}; padding: 5px; background: rgba(0,0,0,0.3);">LUAS: {area:.3f} m²</div>')
+                ).add_to(m)
+
+                # 4. Poligon dengan Popup (Apabila diklik)
                 popup_content = f"""
-                <div style="font-family: Arial; width: 220px;">
+                <div style="font-family: Arial; width: 200px;">
                     <h4 style="margin:0; color:#007BFF;">Maklumat Lot</h4>
                     <hr style="margin:5px 0;">
                     <b>Surveyor:</b> {st.session_state.user_full_name}<br>
                     <b>Luas:</b> {area:.3f} m²<br>
-                    <b>Perimeter:</b> {perimeter:.3f} m<br>
-                    <hr style="margin:5px 0;">
-                    <small><b>Bearing & Jarak:</b><br>{bd_html}</small>
+                    <b>Perimeter:</b> {perimeter:.3f} m
                 </div>
                 """
-
-                # Tambah Poligon dengan Popup
                 folium.Polygon(
-                    locations=poly_coords,
-                    color=poly_color,
-                    weight=3,
-                    fill=True,
-                    fill_opacity=0.3,
+                    locations=poly_coords, 
+                    color=poly_color, 
+                    weight=3, 
+                    fill=True, 
+                    fill_opacity=0.2,
                     popup=folium.Popup(popup_content, max_width=300)
                 ).add_to(m)
 
@@ -141,7 +151,7 @@ if check_password():
 
             # --- 5. EKSPORT ---
             st.divider()
-            st.download_button(label=f"📥 Muat Turun Fail GeoJSON", data="JSON_DATA", file_name=f"survey_{st.session_state.user_full_name}.geojson")
+            st.download_button(label=f"📥 Muat Turun Fail QGIS ({st.session_state.user_full_name})", data="JSON_DATA_HERE", file_name=f"survey_{st.session_state.user_full_name}.geojson")
 
     if st.sidebar.button("Log Keluar"):
         st.session_state.clear()
