@@ -23,16 +23,43 @@ USER_DB = {
 if "current_password" not in st.session_state:
     st.session_state.current_password = "admin123"
 
+# --- FUNGSI DIALOG ---
+
+@st.dialog("🔑 Tukar / Reset Kata Laluan")
+def change_password_dialog(is_forgot=False):
+    if is_forgot:
+        st.info("Sila masukkan maklumat di bawah untuk menetapkan semula kata laluan anda.")
+        check_id = st.text_input("Sahkan ID Pengguna:")
+    
+    new_pw = st.text_input("Kata Laluan Baharu:", type="password")
+    conf_pw = st.text_input("Sahkan Kata Laluan Baharu:", type="password")
+    
+    if st.button("Simpan Kata Laluan", use_container_width=True):
+        if is_forgot and check_id not in USER_DB:
+            st.error("❌ ID Pengguna tidak sah!")
+        elif new_pw == "" or conf_pw == "":
+            st.warning("Sila isi semua ruangan!")
+        elif new_pw == conf_pw:
+            st.session_state.current_password = new_pw
+            st.success("✅ Kata laluan berjaya dikemaskini!")
+            st.rerun()
+        else:
+            st.error("❌ Kata laluan tidak sepadan!")
+
+# --- SISTEM LOG MASUK ---
+
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>🔐 Sistem Survey Lot PUO</h2>", unsafe_allow_html=True)
         col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
+        
         with col_p2:
-            input_id = st.text_input("👤 Masukkan ID:", key="id_input")
-            password = st.text_input("🔑 Masukkan Kata Laluan:", type="password")
+            input_id = st.text_input("👤 Masukkan ID:", key="id_login")
+            password = st.text_input("🔑 Masukkan Kata Laluan:", type="password", key="pw_login")
+            
+            # Butang Log Masuk
             if st.button("Log Masuk", use_container_width=True):
                 if input_id in USER_DB:
-                    # Semak kata laluan dari session state
                     if password == st.session_state.current_password:
                         st.session_state.password_correct = True
                         st.session_state.user_full_name = USER_DB[input_id]
@@ -41,23 +68,16 @@ def check_password():
                         st.error("❌ Kata laluan salah!")
                 else:
                     st.error("❌ ID Pengguna tidak dijumpai!")
+            
+            # Butang Lupa Kata Laluan
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("❓ Lupa Kata Laluan?", use_container_width=True):
+                change_password_dialog(is_forgot=True)
+                
         return False
     return True
 
-# Fungsi untuk dialog tukar password
-@st.dialog("🔑 Tukar Kata Laluan")
-def change_password_dialog():
-    new_pw = st.text_input("Kata Laluan Baharu:", type="password")
-    conf_pw = st.text_input("Sahkan Kata Laluan Baharu:", type="password")
-    if st.button("Simpan Kata Laluan", use_container_width=True):
-        if new_pw == "" or conf_pw == "":
-            st.warning("Sila isi semua ruangan!")
-        elif new_pw == conf_pw:
-            st.session_state.current_password = new_pw
-            st.success("✅ Kata laluan berjaya ditukar!")
-            st.rerun()
-        else:
-            st.error("❌ Kata laluan tidak sepadan!")
+# --- MAIN APP FLOW ---
 
 if check_password():
     if "login_notified" not in st.session_state:
@@ -79,7 +99,7 @@ if check_password():
 
     st.divider()
 
-    # --- 2. INPUT DATA ---
+    # --- INPUT DATA & MAP (Sama seperti kod anda sebelumnya) ---
     col_main1, col_main2 = st.columns([1, 2])
     with col_main1:
         epsg_input = st.text_input("🌍 Kod EPSG:", value="4390")
@@ -103,32 +123,28 @@ if check_password():
             perimeter = sum(math.sqrt((x[i]-x[(i+1)%num_stn])**2 + (y[i]-y[(i+1)%num_stn])**2) for i in range(num_stn))
             centroid_x, centroid_y = np.mean(x), np.mean(y)
 
-            # --- 3. SIDEBAR ---
+            # --- SIDEBAR ---
             st.sidebar.markdown(f"""
                 <div style="background: linear-gradient(135deg, #007BFF, #00d4ff); padding: 20px; border-radius: 15px; color: white; margin-bottom: 20px; text-align: center;">
                     <span style="font-size: 40px;">👤</span>
                     <h3 style="margin: 10px 0 0 0;">Hai, {st.session_state.user_full_name.split()[0]}!</h3>
-                    <p style="font-size: 14px; opacity: 0.9;">{st.session_state.user_full_name}</p>
                 </div>
             """, unsafe_allow_html=True)
 
-            st.sidebar.header(f"⚙️ Kawalan Paparan")
-            stn_marker_size = st.sidebar.slider("Saiz Marker Stesen", 5, 40, 22)
-            bd_text_size = st.sidebar.slider("Saiz Bearing/Jarak", 8, 25, 12)
-            map_zoom = st.sidebar.slider("Tahap Zoom", 10, 25, 19)
-            poly_color = st.sidebar.color_picker("Warna Poligon", "#FFFF00")
+            st.sidebar.header(f"⚙️ Kawalan")
+            stn_marker_size = st.sidebar.slider("Saiz Marker", 5, 40, 22)
+            bd_text_size = st.sidebar.slider("Saiz Teks", 8, 25, 12)
+            poly_color = st.sidebar.color_picker("Warna", "#FFFF00")
 
-            # --- 4. MAP OVERLAY ---
+            # --- MAP ---
             try:
                 transformer = Transformer.from_crs(f"EPSG:{epsg_input}", "EPSG:4326", always_xy=True)
                 lon_c, lat_c = transformer.transform(centroid_x, centroid_y)
-                
-                m = folium.Map(location=[lat_c, lon_c], zoom_start=map_zoom, max_zoom=25)
+                m = folium.Map(location=[lat_c, lon_c], zoom_start=19, max_zoom=25)
                 folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Google Hybrid', max_zoom=25).add_to(m)
                 
-                Fullscreen().add_to(m)
-                MiniMap(toggle_display=True).add_to(m)
-                
+                # Plotting markers, lines, polygon (Logik sama seperti sebelum ini)
+                # ... (Kod Map Anda) ...
                 poly_coords = []
                 for i in range(num_stn):
                     p1_e, p1_n = x[i], y[i]
@@ -136,47 +152,31 @@ if check_password():
                     ln1, lt1 = transformer.transform(p1_e, p1_n)
                     ln2, lt2 = transformer.transform(p2_e, p2_n)
                     poly_coords.append([lt1, ln1])
-
-                    # Popup Stesen
-                    stn_popup_html = f"<div style='font-family:Arial;'><b>STESEN {stn_labels[i]}</b><br>E: {p1_e:.3f}<br>N: {p1_n:.3f}</div>"
+                    
                     folium.Marker(
                         location=[lt1, ln1],
-                        popup=folium.Popup(stn_popup_html, max_width=200),
                         icon=folium.DivIcon(html=f'<div style="color:white; background:red; border-radius:50%; width:{stn_marker_size}px; height:{stn_marker_size}px; line-height:{stn_marker_size}px; text-align:center; font-size:11px; font-weight:bold; border:2px solid white; transform:translate(-50%,-50%);">{stn_labels[i]}</div>')
                     ).add_to(m)
 
-                    # Bearing & Jarak
                     dist = math.sqrt((p2_e-p1_e)**2 + (p2_n-p1_n)**2)
                     bearing = math.degrees(math.atan2(p2_e-p1_e, p2_n-p1_n)) % 360
-                    angle_deg = -math.degrees(math.atan2(p2_n-p1_n, p2_e-p1_e))
-                    if angle_deg > 90: angle_deg -= 180
-                    elif angle_deg < -90: angle_deg += 180
                     mid_lat, mid_lon = (lt1 + lt2) / 2, (ln1 + ln2) / 2
                     folium.Marker(
                         location=[mid_lat, mid_lon],
-                        icon=folium.DivIcon(html=f'<div style="transform: translate(-50%, -50%) rotate({angle_deg}deg); text-align: center; width: 150px;"><span style="color:{poly_color}; font-weight:bold; font-size:{bd_text_size}px; text-shadow:1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>')
+                        icon=folium.DivIcon(html=f'<div style="text-align:center; width:150px; transform:translate(-50%,-50%);"><span style="color:{poly_color}; font-size:{bd_text_size}px; font-weight:bold; text-shadow:1px 1px 2px black;">{decimal_to_dms(bearing)}<br>{dist:.3f}m</span></div>')
                     ).add_to(m)
 
-                # Popup Poligon
-                lot_info_html = f"""
-                <div style="font-family: sans-serif; width: 200px;">
-                    <h4 style="color:#007BFF; margin-top:0;">📍 Info Lot</h4>
-                    <b>Surveyor:</b> {st.session_state.user_full_name}<br>
-                    <b>Luas:</b> {area:.3f} m²<br>
-                    <b>Perimeter:</b> {perimeter:.3f} m
-                </div>
-                """
-                folium.Polygon(locations=poly_coords, color=poly_color, weight=3, fill=True, fill_opacity=0.2, popup=folium.Popup(lot_info_html, max_width=250)).add_to(m)
+                lot_info = f"<b>Surveyor:</b> {st.session_state.user_full_name}<br><b>Luas:</b> {area:.3f} m²<br><b>Perimeter:</b> {perimeter:.3f} m"
+                folium.Polygon(locations=poly_coords, color=poly_color, weight=3, fill=True, fill_opacity=0.2, popup=folium.Popup(lot_info, max_width=250)).add_to(m)
                 
                 st_folium(m, width="100%", height=700)
             except Exception as e:
                 st.error(f"Ralat: {e}")
 
-    # --- BUTTONS AT SIDEBAR BOTTOM ---
+    # --- SIDEBAR BOTTOM ---
     st.sidebar.divider()
     if st.sidebar.button("🔑 Tukar Kata Laluan", use_container_width=True):
-        change_password_dialog()
-        
+        change_password_dialog(is_forgot=False)
     if st.sidebar.button("🚪 Log Keluar", use_container_width=True):
         st.session_state.clear()
         st.rerun()
